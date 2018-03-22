@@ -1,6 +1,6 @@
 class GardensController < ApplicationController
-  before_action :authenticate_member!, except: [:index, :show]
-  after_action :expire_homepage, only: [:create, :delete]
+  before_action :authenticate_member!, except: %i(index show)
+  after_action :expire_homepage, only: %i(create delete)
   load_and_authorize_resource
   respond_to :html, :json
 
@@ -10,13 +10,18 @@ class GardensController < ApplicationController
     @owner = Member.find_by(slug: params[:owner])
     @show_all = params[:all] == '1'
     @gardens = gardens
-
     respond_with(@gardens)
   end
 
   # GET /gardens/1
   # GET /gardens/1.json
   def show
+    @current_plantings = @garden.plantings.current
+      .includes(:crop, :owner)
+      .order(planted_at: :desc)
+    @finished_plantings = @garden.plantings.finished
+      .includes(:crop)
+      .order(finished_at: :desc)
     respond_with(@garden)
   end
 
@@ -63,7 +68,6 @@ class GardensController < ApplicationController
   def gardens
     g = @owner ? @owner.gardens : Garden.all
     g = g.active unless @show_all
-    g = g.includes(:owner).order(:name)
-    g.paginate(page: params[:page])
+    g.joins(:owner).order(:name).paginate(page: params[:page])
   end
 end

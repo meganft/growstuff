@@ -9,26 +9,15 @@
   = tag("meta", property: "og:type", content: "website")
   = tag("meta", property: "og:url", content: request.original_url)
   = tag("meta", property: "og:site_name", content: ENV['GROWSTUFF_SITE_NAME'])
+
+- content_for :scripts do
+  = javascript_include_tag "charts"
+  = javascript_include_tag "https://www.gstatic.com/charts/loader.js"
+
 .row
   .col-md-9
-    - if can?(:edit, @garden) || can?(:delete, @garden)
-      %p.btn-group
-        - if can? :edit, @garden
-          - if @garden.active
-            = link_to "Plant something", new_planting_path(garden_id: @garden.id), class: 'btn btn-primary'
-            = link_to "Mark as inactive", garden_path(@garden, garden: { active: 0 }),
-              method: :put, class: 'btn btn-default',
-              data: { confirm: 'All plantings associated with this garden will be marked as finished. Are you sure?' }
-          - else
-            = link_to "Mark as active", garden_path(@garden, garden: { active: 1 }),
-                      method: :put,
-                      class: 'btn btn-default'
-          = link_to 'Edit garden', edit_garden_path(@garden), class: 'btn btn-default'
-        - if can?(:destroy, @garden)
-          = link_to 'Delete garden', @garden,
-                    method: :delete,
-                    data: { confirm: 'All plantings associated with this garden will also be deleted. Are you sure?' },
-                    class: 'btn btn-default'
+    = render 'gardens/actions', garden: @garden
+
 
     - unless @garden.active
       .alert.alert-warning
@@ -38,46 +27,39 @@
           to plant something in this garden.
 
     %div
-      :growstuff_markdown
-        #{strip_tags @garden.description}
-      - unless @garden.description
-        .row-fluid
-          %p No description available yet.
+      %p
+        :growstuff_markdown
+          #{strip_tags @garden.description}
+        - unless @garden.description
+          .row-fluid
+            %p No description available yet.
 
-          - if can? :edit, @garden
-            %p
-              Why not
-              = link_to 'tell us more.', edit_garden_path(@garden)
+            - if can? :edit, @garden
+              %p
+                Why not
+                = link_to 'tell us more.', edit_garden_path(@garden)
 
-    - if !@garden.photos.empty? || (can?(:edit, @garden) && can?(:create, Photo))
-      .row-fluid
-        %h3 Photos
-        %p= localize_plural(@garden.photos, Photo)
-        .row-fluid
-          %ul.thumbnails
-            - @garden.photos.each do |p|
-              .col-md-2.six-across
-                = render partial: 'photos/thumbnail', locals: { photo: p }
-        .row-fluid
-          - if can?(:create, Photo) && can?(:edit, @garden)
-            %p
-              = link_to "Add photo", new_photo_path(type: "garden", id: @garden.id), class: 'btn btn-primary'
+    %h3 Garden timeline
+    .row
+      .col-md-12= timeline garden_timeline_path(@garden), adapter: "google"
 
-    .row-fluid
-      %h3 What's planted here?
-      - if @garden.plantings.current.empty?
-        %p Nothing is currently planted here.
+    %h3 Current plantings in garden
+    .row
+      - if @current_plantings.size.positive?
+        - @current_plantings.each do |planting|
+          .col-xs-12.col-md-6
+            = render partial: "plantings/card", locals: { planting: planting }
       - else
-        - @garden.plantings.current.each.with_index do |planting_current, _|
-          = render partial: "plantings/thumbnail", locals: { planting: planting_current }
-
-    .row-fluid
-      %h3 Previously planted in this garden
-      - if @garden.plantings.finished.empty?
+        .col-md-12
+          %p Nothing is currently planted here.
+    %h3 Previously planted in this garden
+    .row
+      - if @finished_plantings.size.positive?
+        - @finished_plantings.each do |planting|
+          .col-xs-6.col-md-2
+            = render partial: "plantings/thumbnail", locals: { planting: planting }
+      - else
         %p Nothing has been planted here.
-      - else
-        - @garden.plantings.finished.each.with_index do |planting_finished|
-          = render partial: "plantings/thumbnail", locals: { planting: planting_finished }
   .col-md-3
     %h4 About this garden
     %p
@@ -107,9 +89,24 @@
         - @garden.owner.gardens.inactive.each do |othergarden|
           %li
             - if @garden == othergarden
-              = @garden
+              = @garden.name
             - else
               = link_to othergarden, garden_path(othergarden)
 
-    - if can? :create, @garden
-      = link_to 'Add New Garden', new_garden_path, class: 'btn btn-default btn-xs'
+    - if @garden.owner == current_member
+      %p
+        = link_to new_garden_path, class: 'btn btn-default btn-xs' do
+          Add New Garden
+
+    - if can?(:edit, @garden) && can?(:create, Photo)
+      %p
+        = link_to new_photo_path(type: "garden", id: @garden.id),
+        class: 'btn btn-primary' do
+          %span.glyphicon.glyphicon-camera{ title: "Add photo" }
+          Add photo
+    - if @garden.photos.size.positive?
+      %h3= localize_plural(@garden.photos, Photo)
+      .row
+        - @garden.photos.includes(:owner).each do |photo|
+          .col-xs-6
+            = render partial: 'photos/thumbnail', locals: { photo: photo }

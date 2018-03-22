@@ -1,44 +1,48 @@
 class Crop < ActiveRecord::Base
   extend FriendlyId
-  friendly_id :name, use: [:slugged, :finders]
+  friendly_id :name, use: %i(slugged finders)
 
-  has_many :scientific_names, after_add: :update_index, after_remove: :update_index
-  accepts_nested_attributes_for :scientific_names,
-    allow_destroy: true,
-    reject_if: :all_blank
+  ##
+  ## Triggers
+  before_destroy { |crop| crop.posts.clear }
 
+  ##
+  ## Relationships
+  has_many :scientific_names, after_add: :update_index, after_remove: :update_index, dependent: :destroy
+  accepts_nested_attributes_for :scientific_names, allow_destroy: true, reject_if: :all_blank
   has_many :alternate_names, after_add: :update_index, after_remove: :update_index, dependent: :destroy
   has_many :plantings
   has_many :photos, through: :plantings
   has_many :seeds
   has_many :harvests
-  has_many :plant_parts, -> { uniq }, through: :harvests
+  has_many :plant_parts, -> { uniq.reorder("plant_parts.name") }, through: :harvests
   belongs_to :creator, class_name: 'Member'
   belongs_to :requester, class_name: 'Member'
-
   belongs_to :parent, class_name: 'Crop'
   has_many :varieties, class_name: 'Crop', foreign_key: 'parent_id'
   has_and_belongs_to_many :posts # rubocop:disable Rails/HasAndBelongsToMany
-  before_destroy { |crop| crop.posts.clear }
 
-  default_scope { order("lower(name) asc") }
-  scope :recent, lambda {
-    where(approval_status: "approved").reorder("created_at desc")
-  }
-  scope :toplevel, lambda {
-    where(approval_status: "approved", parent_id: nil)
-  }
-  scope :popular, lambda {
-    where(approval_status: "approved").reorder("plantings_count desc, lower(name) asc")
-  }
-  scope :randomized, lambda {
-    # ok on sqlite and psql, but not on mysql
-    where(approval_status: "approved").reorder('random()')
-  }
+  ##
+  ## Scopes
+  scope :recent, -> { approved.order(created_at: :desc) }
+  scope :toplevel, -> { approved.where(parent_id: nil) }
+  scope :popular, -> { approved.reorder("plantings_count desc, lower(name) asc") }
+  # ok on sqlite and psql, but not on mysql
+  scope :randomized, -> { approved.reorder('random()') }
   scope :pending_approval, -> { where(approval_status: "pending") }
   scope :approved, -> { where(approval_status: "approved") }
   scope :rejected, -> { where(approval_status: "rejected") }
+  scope :interesting, -> { approved.has_photos.randomized }
+  scope :has_photos, -> { includes(:photos).where.not(photos: { id: nil }) }
 
+  ##
+  ## Validations
+  # Reasons are only necessary when rejecting
+  validates :reason_for_rejection, presence: true, if: :rejected?
+  ## This validation addresses a race condition
+  validate :approval_status_cannot_be_changed_again
+  validate :must_be_rejected_if_rejected_reasons_present
+  validate :must_have_meaningful_reason_for_rejection
   ## Wikipedia urls are only necessary when approving a crop
   validates :en_wikipedia_url,
     format: {
@@ -46,16 +50,6 @@ class Crop < ActiveRecord::Base
       message: 'is not a valid English Wikipedia URL'
     },
     if: :approved?
-
-  ## Reasons are only necessary when rejecting
-  validates :reason_for_rejection, presence: true, if: :rejected?
-
-  ## This validation addresses a race condition
-  validate :approval_status_cannot_be_changed_again
-
-  validate :must_be_rejected_if_rejected_reasons_present
-
-  validate :must_have_meaningful_reason_for_rejection
 
   ####################################
   # Elastic search configuration
@@ -103,14 +97,8 @@ class Crop < ActiveRecord::Base
     end
   end
 
-  def as_indexed_json(_options = {})
-    as_json(
-      only: [:id, :name, :approval_status],
-      include: {
-        scientific_names: { only: :name },
-        alternate_names: { only: :name }
-      }
-    )
+  def harvest_photos
+    Photo.joins(:harvests).where("harvests.crop_id": id)
   end
 
   # update the Elasticsearch index (only if we're using it in this
@@ -118,7 +106,6 @@ class Crop < ActiveRecord::Base
   def update_index(_name_obj)
     __elasticsearch__.index_document if ENV["GROWSTUFF_ELASTICSEARCH"] == "true"
   end
-
   # End Elasticsearch section
 
   def to_s
@@ -129,19 +116,18 @@ class Crop < ActiveRecord::Base
     scientific_names.first.name unless scientific_names.empty?
   end
 
-  # crop.default_photo
   # currently returns the first available photo, but exists so that
   # later we can choose a default photo based on different criteria,
   # eg. popularity
   def default_photo
-    return photos.first if photos.any?
+    # most recent photo
+    return photos.order(created_at: :desc).first if photos.any?
 
     # Crop has no photos? Look for the most recent harvest with a photo.
     harvest_with_photo = Harvest.where(crop_id: id).joins(:photos).order('harvests.id DESC').limit(1).first
     harvest_with_photo.photos.first if harvest_with_photo
   end
 
-  # crop.sunniness
   # returns hash indicating whether this crop is grown in
   # sun/semi-shade/shade
   # key: sunniness (eg. 'sun')
@@ -150,7 +136,6 @@ class Crop < ActiveRecord::Base
     count_uses_of_property 'sunniness'
   end
 
-  # crop.planted_from
   # returns a hash of propagation methods (seed, seedling, etc),
   # key: propagation method (eg. 'seed')
   # value: count of how many times it's been used by plantings
@@ -158,7 +143,6 @@ class Crop < ActiveRecord::Base
     count_uses_of_property 'planted_from'
   end
 
-  # crop.popular_plant_parts
   # returns a hash of most harvested plant parts (fruit, seed, etc)
   # key: plant part (eg. 'fruit')
   # value: count of how many times it's been used by harvests
@@ -168,6 +152,10 @@ class Crop < ActiveRecord::Base
       .order("count_harvests_id DESC")
       .group("plant_parts.id", "plant_parts.name")
       .count("harvests.id")
+  end
+
+  def annual?
+    !perennial
   end
 
   def interesting?
@@ -198,155 +186,36 @@ class Crop < ActiveRecord::Base
     ["already in database", "not edible", "not enough information", "other"]
   end
 
-  # Crop.interesting
-  # returns a list of interesting crops, for use on the homepage etc
-  def self.interesting
-    howmany = 12 # max number to find
-    interesting_crops = []
-    Crop.includes(:photos).randomized.each do |c|
-      break if interesting_crops.size == howmany
-      next unless c.interesting?
-      interesting_crops.push(c)
-    end
-    interesting_crops
-  end
-
-  # Crop.create_from_csv(row)
-  # used by db/seeds.rb and rake growstuff:import_crops
-  # CSV fields:
-  # - name (required)
-  # - en_wikipedia_url (required)
-  # - parent (name, optional)
-  # - scientific name (optional, can be picked up from parent if it has one)
-
-  def self.create_from_csv(row)
-    name, en_wikipedia_url, parent, scientific_names, alternate_names = row
-
-    cropbot = Member.find_by(login_name: 'cropbot')
-    raise "cropbot account not found: run rake db:seed" unless cropbot
-
-    crop = Crop.find_or_create_by(name: name)
-    crop.update_attributes(
-      en_wikipedia_url: en_wikipedia_url,
-      creator_id: cropbot.id
-    )
-
-    if parent
-      parent = Crop.find_by(name: parent)
-      if parent
-        crop.update_attributes(parent_id: parent.id)
-      else
-        logger.warn("Warning: parent crop #{parent} not found")
-      end
-    end
-
-    crop.add_scientific_names_from_csv(scientific_names)
-    crop.add_alternate_names_from_csv(alternate_names)
-  end
-
-  def add_scientific_names_from_csv(scientific_names)
-    names_to_add = []
-    if !scientific_names.blank? # i.e. we actually passed something in, which isn't a given
-      names_to_add = scientific_names.split(/,\s*/)
-    elsif parent && !parent.scientific_names.empty? # pick up from parent
-      names_to_add = parent.scientific_names.map(&:name)
-    else
-      logger.warn("Warning: no scientific name (not even on parent crop) for #{self}")
-    end
-
-    cropbot = Member.find_by(login_name: 'cropbot')
-
-    return if names_to_add.empty?
-    raise "cropbot account not found: run rake db:seed" unless cropbot
-
-    add_names_to_list(names_to_add, 'scientific')
-  end
-
-  def add_alternate_names_from_csv(alternate_names)
-    # i.e. we actually passed something in, which isn't a given
-    return if alternate_names.blank?
-
-    cropbot = Member.find_by!(login_name: 'cropbot')
-    names_to_add = alternate_names.split(/,\s*/)
-    add_names_to_list(names_to_add, 'alternate')
-  rescue
-    raise "cropbot account not found: run rake db:seed" unless cropbot
-  end
-
   def rejection_explanation
     return rejection_notes if reason_for_rejection == "other"
     reason_for_rejection
   end
 
-  # Crop.search(string)
+  def update_medians
+    plantings.each(&:update_harvest_days)
+    update_lifespan_medians
+    update_harvest_medians
+  end
+
+  def update_lifespan_medians
+    # Median lifespan of plantings
+    update(median_lifespan: Planting.where(crop: self).median(:lifespan))
+  end
+
+  def update_harvest_medians
+    update(median_days_to_first_harvest: Planting.where(crop: self).median(:days_to_first_harvest))
+    update(median_days_to_last_harvest: Planting.where(crop: self).median(:days_to_last_harvest))
+  end
+
   def self.search(query)
-    if ENV['GROWSTUFF_ELASTICSEARCH'] == "true"
-      search_str = query.nil? ? "" : query.downcase
-      response = __elasticsearch__.search( # Finds documents which match any field, but uses the _score from
-        # the best field insead of adding up _score from each field.
-        query: {
-          multi_match: {
-            query: search_str.to_s,
-            analyzer: "standard",
-            fields: ["name",
-                     "scientific_names.scientific_name",
-                     "alternate_names.name"]
-          }
-        },
-        filter: {
-          term: { approval_status: "approved" }
-        },
-        size: 50
-      )
-      response.records.to_a
-    else
-      # if we don't have elasticsearch, just do a basic SQL query.
-      # also, make sure it's an actual array not an activerecord
-      # collection, so it matches what we get from elasticsearch and we can
-      # manipulate it in the same ways (eg. deleting elements without deleting
-      # the whole record from the db)
-      matches = Crop.approved.where("name ILIKE ?", "%#{query}%").to_a
-
-      # we want to make sure that exact matches come first, even if not
-      # using elasticsearch (eg. in development)
-      exact_match = Crop.approved.find_by(name: query)
-      if exact_match
-        matches.delete(exact_match)
-        matches.unshift(exact_match)
-      end
-
-      matches
-    end
+    CropSearchService.search(query)
   end
 
   def self.case_insensitive_name(name)
-    where(["lower(name) = :value", { value: name.downcase }])
+    where(["lower(crops.name) = :value", { value: name.downcase }])
   end
 
   private
-
-  def add_names_to_list(names_to_add, list_name)
-    names_to_add.each do |n|
-      if name_already_exists(list_name, n)
-        logger.warn("Warning: skipping duplicate #{list_name} name #{n} for #{self}")
-      else
-        create_crop_in_list(list_name, n)
-      end
-    end
-  end
-
-  def create_crop_in_list(list_name, name)
-    cropbot = Member.find_by(login_name: 'cropbot')
-    create_hash = {
-      creator_id: cropbot.id.to_s,
-      name: name
-    }
-    send("#{list_name}_names").create(create_hash)
-  end
-
-  def name_already_exists(list_name, name)
-    send("#{list_name}_names").exists?(name: name)
-  end
 
   def count_uses_of_property(col_name)
     plantings.unscoped
@@ -357,7 +226,6 @@ class Crop < ActiveRecord::Base
   end
 
   # Custom validations
-
   def approval_status_cannot_be_changed_again
     previous = previous_changes.include?(:approval_status) ? previous_changes.approval_status : {}
     return unless previous.include?(:rejected) || previous.include?(:approved)

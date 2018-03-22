@@ -1,11 +1,11 @@
 module ApplicationHelper
   def price_in_dollars(price)
-    sprintf('%.2f', price / 100.0)
+    format('%.2f', price / 100.0)
   end
 
   # 999 cents becomes 9.99 AUD -- for products/orders/etc
   def price_with_currency(price)
-    sprintf('%.2f %s', price / 100.0, Growstuff::Application.config.currency)
+    format('%.2f %s', price / 100.0, Growstuff::Application.config.currency)
   end
 
   def parse_date(str)
@@ -55,6 +55,7 @@ module ApplicationHelper
   # Falls back to Gravatar
   #
   def avatar_uri(member, size = 150)
+    return unless member
     if member.preferred_avatar_uri.present?
       # Some avatars support different sizes
       # http://graph.facebook.com/12345678/picture?width=150&height=150
@@ -93,11 +94,13 @@ module ApplicationHelper
     end
   end
 
-  def title(type, owner, crop)
+  def title(type, owner, crop, planting)
     if owner
       t(".title.owner_#{type}", owner: owner.login_name)
     elsif crop
       t(".title.crop_#{type}", crop: crop.name)
+    elsif planting
+      t(".title.planting_#{type}", planting: planting.to_s)
     else
       t(".title.default")
     end

@@ -5,12 +5,10 @@ module CropsHelper
     seeds = member.seeds.select { |seed| seed.crop.name == crop.name }
 
     seeds.each do |seed|
-      total_quantity = total_quantity + seed.quantity if seed.quantity
+      total_quantity += seed.quantity if seed.quantity
     end
 
-    if !seeds.any?
-      return "You don't have any seeds of this crop."
-    end
+    return "You don't have any seeds of this crop." if seeds.none?
 
     if total_quantity != 0
       "You have #{total_quantity} #{Seed.model_name.human(count: total_quantity)} of this crop."

@@ -1,4 +1,4 @@
-- content_for :title, title('seeds', @owner, @crop)
+- content_for :title, title('seeds', @owner, @crop, @planting)
 - if @owner
   = link_to "View #{@owner}'s profile >>", member_path(@owner)
 
@@ -28,7 +28,7 @@
   - unless @seeds.empty?
     - @seeds.each do |seed|
       .col-md-6
-        = render partial: 'seeds/thumbnail', locals: { seed: seed }
+        = render 'seeds/card', seed: seed
 
 .pagination
   = page_entries_info @seeds

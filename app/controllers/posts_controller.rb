@@ -1,8 +1,8 @@
 class PostsController < ApplicationController
-  before_action :authenticate_member!, except: [:index, :show]
+  before_action :authenticate_member!, except: %i(index show)
   load_and_authorize_resource
   respond_to :html, :json
-  respond_to :rss, only: [:index, :show]
+  respond_to :rss, only: %i(index show)
 
   # GET /posts
   # GET /posts.json
@@ -30,8 +30,7 @@ class PostsController < ApplicationController
   end
 
   # GET /posts/1/edit
-  def edit
-  end
+  def edit; end
 
   # POST /posts
   # POST /posts.json
@@ -67,6 +66,6 @@ class PostsController < ApplicationController
       @author.posts
     else
       Post
-    end.includes(:author, comments: :author).paginate(page: params[:page])
+    end.order(created_at: :desc).includes(:author, comments: :author).paginate(page: params[:page])
   end
 end

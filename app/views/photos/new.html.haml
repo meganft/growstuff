@@ -1,5 +1,9 @@
 - content_for :title, "New Photo"
 
+%h3
+  Choose photo for
+  = @item
+
 - if @flickr_auth
   %p
     Connected to Flickr as
@@ -36,5 +40,5 @@
 - else
   .alert
     You must
-    = link_to "connect your account to Flickr", '/auth/flickr'
+    = link_to "connect your account to Flickr", '/members/auth/flickr'
     to add photos.

@@ -1,26 +1,15 @@
 class MembersController < ApplicationController
-  load_and_authorize_resource except: [:finish_signup, :unsubscribe, :view_follows, :view_followers, :show]
-  skip_authorize_resource only: [:nearby, :unsubscribe, :finish_signup]
-
-  after_action :expire_cache_fragments, only: :create
+  load_and_authorize_resource except: %i(finish_signup unsubscribe view_follows view_followers show)
+  skip_authorize_resource only: %i(nearby unsubscribe finish_signup)
+  respond_to :html, :json, :rss
+  after_action :expire_homepage, only: :create
 
   def index
     @sort = params[:sort]
-    @members = if @sort == 'recently_joined'
-                 Member.confirmed.recently_joined.paginate(page: params[:page])
-               else
-                 Member.confirmed.paginate(page: params[:page])
-               end
-
+    @members = members
     respond_to do |format|
       format.html # index.html.haml
-      format.json {
-        render json: @members.to_json(only: [
-                                        :id, :login_name,
-                                        :slug, :bio, :created_at,
-                                        :location, :latitude, :longitude
-                                      ])
-      }
+      format.json { render json: @members.to_json(only: member_json_fields) }
     end
   end
 
@@ -31,6 +20,7 @@ class MembersController < ApplicationController
     @facebook_auth = @member.auth('facebook')
     @posts         = @member.posts
     @gardens       = @member.gardens.active.order(:name)
+
     # The garden form partial is called from the "New Garden" tab;
     # it requires a garden to be passed in @garden.
     # The new garden is not persisted unless Garden#save is called.
@@ -38,18 +28,13 @@ class MembersController < ApplicationController
 
     respond_to do |format|
       format.html # show.html.haml
-      format.json {
-        render json: @member.to_json(only: [
-                                       :id, :login_name, :bio,
-                                       :created_at, :slug, :location,
-                                       :latitude, :longitude
-                                     ])
-      }
-      format.rss {
+      format.json { render json: @member.to_json(only: member_json_fields) }
+      format.rss do
         render(
           layout: false,
           locals: { member: @member }
-        )}
+        )
+      end
     end
   end
 
@@ -66,7 +51,7 @@ class MembersController < ApplicationController
   EMAIL_TYPE_STRING = {
     send_notification_email: "direct message notifications",
     send_planting_reminder: "planting reminders"
-  }
+  }.freeze
 
   def unsubscribe
     verifier = ActiveSupport::MessageVerifier.new(ENV['RAILS_SECRET_TOKEN'])
@@ -77,7 +62,6 @@ class MembersController < ApplicationController
     @member.update(@type => false)
 
     flash.now[:notice] = I18n.t('members.unsubscribed', email_type: EMAIL_TYPE_STRING[@type])
-
   rescue ActiveSupport::MessageVerifier::InvalidSignature
     flash.now[:alert] = I18n.t('members.unsubscribe.error')
   end
@@ -98,11 +82,23 @@ class MembersController < ApplicationController
 
   private
 
-  def expire_cache_fragments
-    expire_fragment("homepage_stats")
-  end
-
   def member_params
     params.require(:member).permit(:login_name, :tos_agreement, :email, :newsletter)
+  end
+
+  def member_json_fields
+    %i(
+      id login_name
+      slug bio created_at
+      location latitude longitude
+    )
+  end
+
+  def members
+    if @sort == 'recently_joined'
+      Member.recently_joined
+    else
+      Member.order(:login_name)
+    end.confirmed.paginate(page: params[:page])
   end
 end
