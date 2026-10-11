@@ -1,67 +1,67 @@
+# frozen_string_literal: true
+
 class CommentsController < ApplicationController
-  before_action :authenticate_member!, except: [:index, :show]
+  before_action :authenticate_member!, except: %i(index)
   load_and_authorize_resource
   respond_to :html, :json
   respond_to :rss, only: :index
+  responders :flash
 
-  # GET /comments
-  # GET /comments.json
-  # GET /comments.rss
   def index
-    @comments = Comment.paginate(page: params[:page])
+    @comments = Comment.order(created_at: :desc).paginate(page: params[:page])
     respond_with(@comments)
   end
 
-  # GET /comments/new
-  # GET /comments/new.json
   def new
+    @commentable = find_commentable
     @comment = Comment.new
-    @post = Post.find_by(id: params[:post_id])
-
-    if @post
-      @comments = @post.comments
-      respond_with(@comment)
+    if @commentable
+      @comments = @commentable.comments
+      respond_with(@comments)
     else
       redirect_to(request.referer || root_url,
-        alert: "Can't post a comment on a non-existent post")
+                  alert: "Can't post a comment on a non-existent commentable")
     end
   end
 
-  # GET /comments/1/edit
   def edit
-    @comments = @comment.post.comments
+    # TODO: Why does this need a collection of comments?
+    @comments = @comment.commentable.comments
+    @commentable = @comment.commentable
   end
 
-  # POST /comments
-  # POST /comments.json
   def create
     @comment = Comment.new(comment_params)
+    @commentable = @comment.commentable
     @comment.author = current_member
-    flash[:notice] = "Comment was successfully created." if @comment.save
-    respond_with(@comment.post)
+    @comment.save
+    respond_with @comment, location: @commentable
   end
 
-  # PUT /comments/1
-  # PUT /comments/1.json
   def update
-    # only body can be updated
-    if @comment.update(body: comment_params['body'])
-      flash[:notice] = 'Comment was successfully updated.'
-    end
-    respond_with(@comment.post)
+    @comment.update(body: comment_params['body'])
+    respond_with @comment, location: @comment.commentable
   end
 
-  # DELETE /comments/1
-  # DELETE /comments/1.json
   def destroy
-    @post = @comment.post
+    @commentable = @comment.commentable
     @comment.destroy
-    respond_with(@post)
+    respond_with(@commentable)
   end
 
   private
 
+  def find_commentable
+    return unless params[:comment]
+
+    if params[:comment][:commentable_type] == 'Photo'
+      Photo.find(params[:comment][:commentable_id])
+    elsif params[:comment][:commentable_type] == 'Post'
+      Post.find(params[:comment][:commentable_id])
+    end
+  end
+
   def comment_params
-    params.require(:comment).permit(:body, :post_id)
+    params.require(:comment).permit(:body, :commentable_id, :commentable_type)
   end
 end

@@ -1,0 +1,4 @@
+-# One actions menu for the page: the three-dot button in the top right of the
+-# hero. The items, and who may see them, are decided in planting_menu_actions.
+- if can?(:edit, planting)
+  = react_component 'PlantingActions', planting_actions_props(planting), class: 'planting-actions'

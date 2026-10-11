@@ -1,21 +1,16 @@
-%h4 See who's planted #{crop.name.pluralize}
-- if crop.plantings.empty?
-  %p
-    Nobody has planted this crop yet.
+-# Sidebar content: the section around it supplies the box and the heading.
+- if crop.plantings.any?
+  %ul.list-group.list-group-flush
+    - crop.plantings.includes(:owner, :garden).order(planted_at: :desc).limit(5).each do |planting|
+      %li.list-group-item
+        = link_to planting_path(planting), class: 'card-link' do
+          = planting_icon
+          = planting
+        .float-end= render 'members/location', member: planting.owner
 - else
-  %ul
-    - crop.plantings.take(3).each do |planting|
-      %li
-        = link_to display_planting(planting), planting_path(planting)
-        = render partial: 'members/location', locals: { member: planting.owner }
-        %small
-          = distance_of_time_in_words(planting.created_at, Time.zone.now)
-          ago.
-  %p
-    = link_to "View all #{crop.name} plantings", plantings_by_crop_path(crop)
+  %p.text-muted Nobody has planted this crop yet.
 - if crop.approved?
   - if current_member
-    %p= link_to "Plant #{crop.name}", new_planting_path(crop_id: crop.id)
+    %p.mb-0= link_to "Plant #{crop.name}", new_planting_path(crop_id: crop.id), class: 'btn btn-secondary btn-sm'
   - else
     = render partial: 'shared/signin_signup', locals: { to: "track your #{crop.name} plantings" }
-

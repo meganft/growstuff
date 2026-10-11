@@ -1,81 +1,78 @@
-- content_for :title, "#{@seed.owner}'s #{@seed.crop} seeds"
-- content_for :opengraph do
-  - @seed.crop.photos.each do |photo|
-    = tag("meta", property: "og:image", content: photo.fullsize_url)
-  - if @seed.description
-    = tag("meta", property: "og:description", content: og_description(@seed.description))
-  = tag("meta", property: "og:image", content: "#{@seed.owner}'s #{@seed.crop} seeds")
-  = tag("meta", property: "og:type", content: "website")
-  = tag("meta", property: "og:url", content: request.original_url)
-  = tag("meta", property: "og:site_name", content: ENV['GROWSTUFF_SITE_NAME'])
+- seed_title = "#{@seed.owner}'s #{@seed.crop} seeds"
+= render 'shared/record_meta',
+         title: seed_title,
+         description: @seed.description.presence || "Seeds for #{@seed.crop.name}, shared by #{@seed.owner}.",
+         image: seed_image_path(@seed)
 
-.row
-  .col-md-6
-    %p
-      %b Owner:
-      = link_to @seed.owner, @seed.owner
-      &mdash;
-      = link_to "view all #{@seed.owner}'s seeds", seeds_by_owner_path(owner: @seed.owner.slug)
-    %p
-      %b Quantity:
-      = @seed.quantity.blank? ? "not specified" : @seed.quantity
-    %p
-      %b Plant before:
-      = @seed.plant_before.to_s
-    %p
-      %b Days until maturity:
-      = render partial: 'days_until_maturity', locals: { seed: @seed }
-    %p
-      %b Organic?
-      = @seed.organic
-    %p
-      %b GMO?
-      = @seed.gmo
-    %p
-      %b Heirloom?
-      = @seed.heirloom
-    %p
-      %b Will trade:
-      = @seed.tradable_to
-      - if @seed.owner.location.blank?
-        (from unspecified location)
-        - if current_member == @seed.owner
-          = link_to "Set Location", edit_registration_path(current_member), class: 'btn btn-default btn-xs'
-      - else
-        (from
-        = succeed ")" do
-          = link_to @seed.owner.location, place_path(@seed.owner.location, anchor: "seeds")
+%script{type: "application/ld+json"}
+  = crop_jsonld_data(@seed.crop, full_attributes: false).to_json.html_safe
 
-    %p
-      %b Description:
-      :growstuff_markdown
-        #{ @seed.description != "" ? strip_tags(@seed.description) : "No description given." }
+- content_for :breadcrumbs do
+  %li.breadcrumb-item= link_to 'Seeds', seeds_path
+  %li.breadcrumb-item= link_to @seed.owner, member_seeds_path(@seed.owner)
+  %li.breadcrumb-item.active= link_to @seed, @seed
 
-    - if current_member
-      - if @seed.tradable? && current_member != @seed.owner
-        %p= link_to "Request seeds",
-                    new_notification_path(recipient_id: @seed.owner.id,
-                                         subject: "Interested in your #{@seed.crop} seeds"),
-                    class: 'btn btn-primary'
-    - else
-      = render partial: 'shared/signin_signup', locals: { to: 'request seeds' }
+.seed-show.record-page
+  .row
+    .col-md-8.col-12
+      -# Everything that is this packet of seeds, inside one border. See DESIGN.md.
+      .record-panel.seed-detail
+        .jumbotron
+          .d-flex.justify-content-between.align-items-start
+            .record-identity
+              = render 'shared/record_owner', owner: @seed.owner
+              .record-identity-text
+                %h1.display-3
+                  = crop_icon(@seed.crop)
+                  %strong= t('seeds.show.heading', crop: @seed.crop.name.titleize)
+                %p.lead.mb-0
+                  saved by
+                  %strong.record-grower-name= link_to @seed.owner, @seed.owner
+                  %span.text-muted
+                    &middot;
+                    = I18n.l @seed.created_at.to_date
+                %p.seed-badges.mb-0
+                  - if @seed.organic != 'unknown'
+                    %span.badge.text-bg-success.seedtitle--organic= @seed.organic
+                  - if @seed.gmo != 'unknown'
+                    %span.badge.text-bg-success.seedtitle--gmo= @seed.gmo
+                  - if @seed.heirloom != 'unknown'
+                    %span.badge.text-bg-success.seedtitle--heirloom= @seed.heirloom
+                - if @seed.parent_planting
+                  = render 'shared/record_parent', planting: @seed.parent_planting, verb: 'saved from'
+            = render 'seeds/actions', seed: @seed
 
-    - if can?(:edit, @seed) || can?(:destroy, @seed)
-      %p
-      - if can? :edit, @seed
-        = link_to 'Edit', edit_seed_path(@seed), class: 'btn btn-default btn-xs'
-      - if can? :destroy, @seed
-        = link_to 'Delete', @seed, method: :delete, data: { confirm: 'Are you sure?' }, class: 'btn btn-default btn-xs'
+        %section.seed-facts= render 'facts', seed: @seed
 
-  .col-md-6
-    = render partial: "crops/index_card", locals: { crop: @seed.crop }
-    - if @seed.owner.location
-      %p
-        %small
-          View other seeds, members to trade with and more near
-          = link_to @seed.owner.location, place_path(@seed.owner.location, anchor: "seeds")
-    %p
-      %small
-        Or
-        = link_to "purchase seeds via Ebay",
-        crop_ebay_seeds_url(@seed.crop), target: "_blank", rel: "noopener noreferrer"
+        - unless @seed.description.blank?
+          = cute_icon
+          %section.seed--description
+            .section-header
+              %h2 Notes
+            :markdown
+              #{strip_tags markdownify(@seed.description)}
+
+        - if current_member
+          - if @seed.tradable && current_member != @seed.owner
+            %p= link_to "Request seeds",
+                        new_message_path(recipient_id: @seed.owner.id,
+                                             subject: "Interested in your #{@seed.crop} seeds"),
+                        class: 'btn btn-primary'
+        - else
+          = render 'shared/signin_signup', to: 'request seeds'
+
+        %section.plantings
+          = render 'seeds/descendants', seed: @seed
+
+        - if @photos.any?
+          %section.seed-photos
+            .section-header
+              %h2 Photos
+            - @photos.each do |photo|
+              = render 'photos/hero', photo: photo
+
+    .col-md-4.col-12
+      %section.seed-crop
+        .section-header
+          %h2 Crop
+        = render 'plantings/crop', crop: @seed.crop

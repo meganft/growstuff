@@ -1,0 +1,190 @@
+.crop-icon {
+  height: 1em;
+}
+.card-footer {
+  .btn-group-vertical {
+    .btn {
+      text-wrap: initial
+    }
+  }
+}
+.crop-thumbnail {
+  .text {
+    bottom: 0;
+    color: $white;
+    margin: 0;
+    opacity: 0.8;
+    position: absolute;
+    text-align: center;
+    width: 100%;
+
+    h3 {
+      background-color: $brown;
+      font-size: 1em;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .crop-sci-name {
+      background-color: $beige;
+      color: $black;
+      font-size: 0.7em;
+      margin-top: 0;
+      padding-top: 0;
+    }
+
+    a {
+      color: $white;
+    }
+
+    a:hover {
+      color: $black;
+    }
+
+    .img-card {
+      border-top-left-radius: $card-radius;
+      border-top-right-radius: $card-radius;
+    }
+  }
+}
+
+.planting {
+  .crop-card {
+    height: 100%;
+    margin: 0.1em;
+    min-height: 300px;
+  }
+
+  .img-thumbnail {
+    width: 100%;
+  }
+}
+
+.crop-photos {
+  margin-left: 3em;
+}
+
+.crops-search-form {
+  background-color: $white;
+  padding: 1em;
+}
+
+.crop-hierarchy {
+  list-style-type: disc;
+}
+
+.add-sciname-row,
+.remove-sciname-row,
+.add-altname-row,
+.remove-altname-row {
+  display: none;
+}
+
+.crop-chip {
+  // A soft tint of the brand green (Bootstrap 5.3's subtle colours) rather than a
+  // solid brown-grey pill, so a row of crops doesn't read as a row of dark blobs.
+  background-color: var(--bs-success-bg-subtle);
+  border: 1px solid var(--bs-success-border-subtle);
+  color: var(--bs-success-text-emphasis);
+  line-height: 28px;
+
+  a {
+    color: inherit;
+  }
+}
+
+.crop-hero-photo {
+  max-height: 300px;
+}
+
+@include media-breakpoint-down(sm) {
+  .index-cards {
+    .crop-thumbnail {
+      margin: 0.2em;
+      width: 30%;
+    }
+  }
+}
+
+// The crop's names, directly under its title.
+.crop-sci-names {
+  margin-bottom: 0.25rem;
+  font-style: italic;
+  font-size: 1.05rem;
+}
+
+.crop-alt-names {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+
+  .badge {
+    font-weight: normal;
+  }
+}
+
+.crop-parent {
+  margin-bottom: 0.75rem;
+  color: $ink-muted;
+}
+
+// The hero: identity on one side, the action and headline numbers on the
+// other, so the crop's name doesn't sit alone against a wide empty panel.
+.crop-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 1.5rem;
+
+  h1 {
+    margin-bottom: 0.25rem;
+  }
+}
+
+.crop-info-main {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+// The numbers sit at the top, the one action at the foot, level with the
+// bottom of the description beside it.
+.crop-info-aside {
+  display: flex;
+  flex: 0 1 14rem;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+
+  .crop-actions {
+    margin-top: auto;
+    padding-top: 1rem;
+  }
+}
+
+// The crop at a glance: how much of it the site knows about.
+.crop-stats {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1.5rem;
+  margin: 0;
+  text-align: center;
+
+  dt {
+    font-size: 1.6rem;
+    font-weight: normal;
+    line-height: 1;
+  }
+
+  dd {
+    margin: 0;
+    color: $ink-muted;
+    font-size: 0.8rem;
+  }
+}
+
+.crop-description {
+  margin-bottom: 0;
+}
+
+.crop-attribute {
+  margin-bottom: 0.5rem;
+}

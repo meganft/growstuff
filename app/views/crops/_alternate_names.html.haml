@@ -1,16 +1,16 @@
-.alternate_names
-  %h4 Alternate names
-  - if crop.alternate_names.empty?
-    %p None known.
-  - else
-    %ul
-      - crop.alternate_names.each do |an|
-        %li
-          = an.name
-          - if can? :edit, an
-            = link_to 'Edit', edit_alternate_name_path(an), class: 'btn btn-default btn-xs'
-          - if can? :destroy, an
-            = link_to 'Delete', an, method: :delete, data: { confirm: 'Are you sure?' }, class: 'btn btn-default btn-xs'
-  %p
-  - if can? :edit, crop
-    = link_to 'Add', new_alternate_name_path(crop_id: crop.id), class: 'btn btn-default btn-xs'
+-# Also under the name: what this crop is called elsewhere. Wranglers edit or
+-# delete each one from its own menu; adding is in the crop's actions menu.
+- if crop.alternate_names.any?
+  .alternate_names.crop-alt-names
+    %span.text-muted Also known as
+    - crop.alternate_names.each do |an|
+      - if can? :edit, an
+        %span.dropdown.d-inline-block
+          %a.dropdown-toggle.badge.text-bg-light{ "aria-expanded" => "false", "data-bs-toggle" => "dropdown", href: '#', role: "button" }= "#{an.name} (#{an.language})"
+          .dropdown-menu
+            %a.dropdown-item{ href: "#", "data-bs-toggle" => "modal", "data-bs-target" => "#alternate-name-#{an.id}" }= t('.edit')
+            - if can? :destroy, an
+              .dropdown-divider
+              = link_to t('.delete'), an, method: :delete, data: { confirm: 'Are you sure?' }, class: 'dropdown-item text-danger'
+      - else
+        %span.badge.text-bg-light= "#{an.name} (#{an.language})"

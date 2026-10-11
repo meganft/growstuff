@@ -1,283 +1,329 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 require 'custom_matchers'
 
-feature "Planting a crop", :js, :elasticsearch do
-  let(:member) { create :member }
-  let!(:maize) { create :maize }
-  let(:garden) { create :garden, owner: member }
-  let!(:planting) { create :planting, garden: garden, planted_at: Date.parse("2013-3-10") }
-
-  background do
-    login_as member
-    visit new_planting_path
-    sync_elasticsearch [maize]
+describe "Planting a crop", :js, :search do
+  let!(:maize) { create(:maize) }
+  let(:garden) { create(:garden, owner: member, name: 'Orchard') }
+  let!(:planting) do
+    create(:planting, garden:, owner: member, planted_at: Date.parse("2013-03-10"))
   end
 
-  it_behaves_like "crop suggest", "planting"
+  context 'signed in' do
+    include_context 'signed in member'
+    before { visit new_planting_path }
 
-  it "has the required fields help text" do
-    expect(page).to have_content "* denotes a required field"
-  end
+    it_behaves_like "crop suggest", "planting"
 
-  it "displays required and optional fields properly" do
-    expect(page).to have_selector ".form-group.required", text: "What did you plant?"
-    expect(page).to have_selector ".form-group.required", text: "Where did you plant it?"
-    expect(page).to have_optional 'input#planting_planted_at'
-    expect(page).to have_optional 'input#planting_quantity'
-    expect(page).to have_optional 'select#planting_planted_from'
-    expect(page).to have_optional 'select#planting_sunniness'
-    expect(page).to have_optional 'textarea#planting_description'
-    expect(page).to have_optional 'input#planting_finished_at'
-  end
-
-  scenario "Creating a new planting" do
-    fill_autocomplete "crop", with: "mai"
-    select_from_autocomplete "maize"
-    within "form#new_planting" do
-      fill_in "When", with: "2014-06-15"
-      fill_in "How many?", with: 42
-      select "cutting", from: "Planted from:"
-      select "semi-shade", from: "Sun or shade?"
-      fill_in "Tell us more about it", with: "It's rad."
-      click_button "Save"
+    describe "displays required and optional fields properly" do
+      it { expect(page).to have_css ".required", text: "What did you plant?" }
+      it { expect(page).to have_css ".required", text: "Where did you plant it?" }
+      it { expect(page).to have_css 'input#planting_planted_at' }
+      it { expect(page).to have_css 'input#planting_quantity' }
+      it { expect(page).to have_css 'select#planting_planted_from' }
+      it { expect(page).to have_css 'select#planting_sunniness' }
+      it { expect(page).to have_css 'textarea#planting_description' }
+      it { expect(page).to have_css 'input#planting_finished_at' }
     end
 
-    expect(page).to have_content "Planting was successfully created"
-    expect(page).to have_content "Progress: Not calculated, days before maturity unknown"
-  end
-
-  scenario "Clicking link to owner's profile" do
-    visit plantings_by_owner_path(member)
-    click_link "View #{member}'s profile >>"
-    expect(current_path).to eq member_path(member)
-  end
-
-  describe "Progress bar status on planting creation" do
-    before do
-      login_as member
-      visit new_planting_path
-
-      @a_past_date = 15.days.ago.strftime("%Y-%m-%d")
-      @right_now = Time.zone.today.strftime("%Y-%m-%d")
-      @a_future_date = 1.year.from_now.strftime("%Y-%m-%d")
-    end
-
-    it "should show that it is not planted yet" do
-      fill_autocomplete "crop", with: "mai"
-      select_from_autocomplete "maize"
-      within "form#new_planting" do
-        fill_in "When", with: @a_future_date
-        fill_in "How many?", with: 42
-        select "cutting", from: "Planted from:"
-        select "semi-shade", from: "Sun or shade?"
-        fill_in "Tell us more about it", with: "It's rad."
-        click_button "Save"
+    describe "Creating a new planting" do
+      before do
+        fill_autocomplete "crop", with: "mai"
+        select_from_autocomplete "maize"
+        within "form#new_planting" do
+          fill_in "How many?", with: 42
+          select "cutting", from: "Planted from"
+          select "semi-shade", from: "Sun or shade?"
+          fill_in "Tell us more about it", with: "It's rad."
+          choose 'Garden'
+          fill_in "When", with: "2014-06-15"
+          click_button "Save"
+        end
       end
 
-      expect(page).to have_content "Planting was successfully created"
-      expect(page).to have_content "Progress: 0% - not planted yet"
+      it { expect(page).to have_content "planting was successfully created" }
     end
 
-    it "should show that days before maturity is unknown" do
-      fill_autocomplete "crop", with: "mai"
-      select_from_autocomplete "maize"
-      within "form#new_planting" do
-        fill_in "When", with: @a_past_date
-        fill_in "How many?", with: 42
-        select "cutting", from: "Planted from:"
-        select "semi-shade", from: "Sun or shade?"
-        fill_in "Tell us more about it", with: "It's rad."
-        click_button "Save"
+    describe "Clicking link to owner's profile" do
+      before do
+        visit member_plantings_path(member)
+        within '.login-name' do
+          click_link member.login_name
+        end
       end
 
-      expect(page).to have_content "Planting was successfully created"
-      expect(page).to have_content "Progress: Not calculated, days before maturity unknown"
-      expect(page).to have_content "Days until maturity: unknown"
+      it { expect(page).to have_current_path member_path(member), ignore_query: true }
     end
 
-    it "should show that planting is in progress" do
-      fill_autocomplete "crop", with: "mai"
-      select_from_autocomplete "maize"
-      within "form#new_planting" do
-        fill_in "When", with: @right_now
-        fill_in "How many?", with: 42
-        select "cutting", from: "Planted from:"
-        select "semi-shade", from: "Sun or shade?"
-        fill_in "Tell us more about it", with: "It's rad."
-        fill_in "Finished date", with: @a_future_date
-        click_button "Save"
+    describe "Progress bar status on planting creation" do
+      before do
+        visit new_planting_path
+
+        @a_past_date = 15.days.ago.strftime("%Y-%m-%d")
+        @right_now = Time.zone.today.strftime("%Y-%m-%d")
+        @a_future_date = 1.year.from_now.strftime("%Y-%m-%d")
       end
 
-      expect(page).to have_content "Planting was successfully created"
-      expect(page).to_not have_content "Progress: 0% - not planted yet"
-      expect(page).to_not have_content "Progress: Not calculated, days before maturity unknown"
+      it "shows that it is not planted yet" do
+        fill_autocomplete "crop", with: "mai"
+        select_from_autocomplete "maize"
+        within "form#new_planting" do
+          choose 'Garden'
+          fill_in "When", with: @a_future_date
+          fill_in "How many?", with: 42
+          select "cutting", from: "Planted from"
+          select "semi-shade", from: "Sun or shade?"
+          fill_in "Tell us more about it", with: "It's rad."
+          click_button "Save"
+        end
+
+        expect(page).to have_content "planting was successfully created"
+        # Planted in the future: planned, rather than 0% grown.
+        expect(page).to have_content "Planned"
+      end
+
+      it "shows that days before maturity is unknown" do
+        fill_autocomplete "crop", with: "mai"
+        select_from_autocomplete "maize"
+        within "form#new_planting" do
+          choose 'Garden'
+          fill_in "When", with: @a_past_date
+          fill_in "How many?", with: 42
+          select "cutting", from: "Planted from"
+          select "semi-shade", from: "Sun or shade?"
+          fill_in "Tell us more about it", with: "It's rad."
+          click_button "Save"
+        end
+
+        expect(page).to have_content "planting was successfully created"
+        expect(page).to have_no_content "Finished"
+        expect(page).to have_no_content "Finishes"
+      end
+
+      it "shows that planting is in progress" do
+        fill_autocomplete "crop", with: "mai"
+        select_from_autocomplete "maize"
+        within "form#new_planting" do
+          choose 'Garden'
+          fill_in "When", with: @right_now
+          fill_in "How many?", with: 42
+          select "cutting", from: "Planted from"
+          select "semi-shade", from: "Sun or shade?"
+          fill_in "When?", with: '2013-03-10'
+          fill_in "Tell us more about it", with: "It's rad."
+          fill_in "Finished date", with: @a_future_date
+          click_button "Save"
+        end
+
+        expect(page).to have_content "planting was successfully created"
+        expect(page).to have_no_content "0%"
+        expect(page).to have_no_content "Finish expected"
+        expect(page).to have_no_content "Finishes"
+      end
+
+      it "shows that planting is 100% complete (no date specified)" do
+        fill_autocomplete "crop", with: "mai"
+        select_from_autocomplete "maize"
+        within "form#new_planting" do
+          choose 'Garden'
+          fill_in "When", with: @right_now
+          fill_in "How many?", with: 42
+          select "cutting", from: "Planted from"
+          select "semi-shade", from: "Sun or shade?"
+          fill_in "Tell us more about it", with: "It's rad."
+          check "Mark as finished"
+          click_button "Save"
+        end
+
+        expect(page).to have_content "planting was successfully created"
+        expect(page).to have_content "Finished"
+      end
+
+      it "shows that planting is 100% complete (date specified)" do
+        fill_autocomplete "crop", with: "mai"
+        select_from_autocomplete "maize"
+        within "form#new_planting" do
+          choose 'Garden'
+          fill_in "When", with: @a_past_date
+          fill_in "How many?", with: 42
+          select "cutting", from: "Planted from"
+          select "semi-shade", from: "Sun or shade?"
+          choose 'Garden'
+          fill_in "Tell us more about it", with: "It's rad."
+          fill_in "Finished date", with: @right_now
+          click_button "Save"
+        end
+
+        expect(page).to have_content "planting was successfully created"
+        expect(page).to have_content "Finished"
+      end
     end
 
-    it "should show that planting is 100% complete (no date specified)" do
-      fill_autocomplete "crop", with: "mai"
-      select_from_autocomplete "maize"
-      within "form#new_planting" do
-        fill_in "When", with: @right_now
-        fill_in "How many?", with: 42
-        select "cutting", from: "Planted from:"
-        select "semi-shade", from: "Sun or shade?"
-        fill_in "Tell us more about it", with: "It's rad."
+    it "Planting from crop page" do
+      visit crop_path(maize)
+      click_link "Add to my garden"
+      click_link "Orchard"
+      expect(page).to have_content "planting was successfully created"
+      expect(page).to have_content "maize"
+    end
+
+    it "Editing a planting to add details" do
+      visit planting_path(planting)
+      click_link 'Actions'
+      click_link 'Edit'
+      within '[role=dialog]' do
+        fill_in "Tell us more about it", with: "Some extra notes"
+        click_button "Save"
+      end
+      # The dialog saves over JSON and the page reloads, so the notes
+      # themselves are the confirmation rather than a flash message.
+      expect(page).to have_content "Some extra notes"
+    end
+
+    it "Editing a planting to fill in the finished date" do
+      visit planting_path(planting)
+      expect(page).to have_no_content "Finishes"
+      click_link 'Actions'
+      click_link 'Edit'
+      within '[role=dialog]' do
         check "Mark as finished"
+        # A Date, not a string: Capybara sets a type=date field from a Date,
+        # but types a string into its segments, which lands as nothing.
+        fill_in "Finished date", with: Date.new(2015, 6, 25)
         click_button "Save"
       end
-
-      expect(page).to have_content "Planting was successfully created"
-      expect(page).to have_content "Progress: 100%"
-      expect(page).to have_content "Yes (no date specified)"
-      expect(page).to have_content "Days until maturity: 0"
+      expect(page).to have_content "Finished"
     end
 
-    it "should show that planting is 100% complete (date specified)" do
+    it "Marking a planting as finished" do
       fill_autocomplete "crop", with: "mai"
       select_from_autocomplete "maize"
+      choose(member.gardens.first.name)
       within "form#new_planting" do
-        fill_in "When", with: @a_past_date
-        fill_in "How many?", with: 42
-        select "cutting", from: "Planted from:"
-        select "semi-shade", from: "Sun or shade?"
-        fill_in "Tell us more about it", with: "It's rad."
-        fill_in "Finished date", with: @right_now
-        click_button "Save"
-      end
-
-      expect(page).to have_content "Planting was successfully created"
-      expect(page).to have_content "Progress: 100%"
-      expect(page).to have_content "Days until maturity: 0"
-    end
-  end
-
-  scenario "Planting from crop page" do
-    visit crop_path(maize)
-    click_link "Plant this"
-    within "form#new_planting" do
-      expect(page).to have_selector "input[value='maize']"
-      click_button "Save"
-    end
-
-    expect(page).to have_content "Planting was successfully created"
-    expect(page).to have_content "maize"
-  end
-
-  scenario "Editing a planting to add details" do
-    visit planting_path(planting)
-    click_link "Edit"
-    fill_in "Tell us more about it", with: "Some extra notes"
-    click_button "Save"
-    expect(page).to have_content "Planting was successfully updated"
-  end
-
-  scenario "Editing a planting to fill in the finished date" do
-    visit planting_path(planting)
-    expect(page).to have_content "Progress: Not calculated, days before maturity unknown"
-    click_link "Edit"
-    check "finished"
-    fill_in "Finished date", with: "2015-06-25"
-    click_button "Save"
-    expect(page).to have_content "Planting was successfully updated"
-    expect(page).to_not have_content "Progress: Not calculated, days before maturity unknown"
-  end
-
-  scenario "Marking a planting as finished" do
-    fill_autocomplete "crop", with: "mai"
-    select_from_autocomplete "maize"
-    within "form#new_planting" do
-      fill_in "When?", with: "2014-07-01"
-      check "Mark as finished"
-      fill_in "Finished date", with: "2014-08-30"
-
-      # Trigger click instead of using Capybara"s uncheck
-      # because a date selection widget is overlapping
-      # the checkbox preventing interaction.
-      find("#planting_finished").trigger 'click'
-    end
-
-    # Javascript removes the finished at date when the
-    # planting is marked unfinished.
-    expect(find("#planting_finished_at").value).to eq("")
-
-    within "form#new_planting" do
-      find("#planting_finished").trigger 'click'
-    end
-
-    # The finished at date was cached in Javascript in
-    # case the user clicks unfinished accidentally.
-    expect(find("#planting_finished_at").value).to eq("2014-08-30")
-
-    within "form#new_planting" do
-      click_button "Save"
-    end
-    expect(page).to have_content "Planting was successfully created"
-    expect(page).to have_content "Finished: August 30, 2014"
-
-    # shouldn't be on the page
-    visit plantings_path
-    expect(page).not_to have_content "maize"
-
-    # show all plantings to see this finished planting
-    visit plantings_path(all: 1)
-    expect(page).to have_content "August 30, 2014"
-  end
-
-  scenario "Marking a planting as finished without a date" do
-    fill_autocomplete "crop", with: "mai"
-    select_from_autocomplete "maize"
-    within "form#new_planting" do
-      check "Mark as finished"
-      click_button "Save"
-    end
-    expect(page).to have_content "Planting was successfully created"
-    expect(page).to have_content "Finished: Yes (no date specified)"
-    expect(page).to have_content "Progress: 100%"
-  end
-
-  describe "Planting sunniness" do
-    it "should show the a sunny image" do
-      fill_autocomplete "crop", with: "mai"
-      select_from_autocomplete "maize"
-      within "form#new_planting" do
-        fill_in "When", with: "2015-10-15"
-        fill_in "How many?", with: 42
-        select "cutting", from: "Planted from:"
-        select "sun", from: "Sun or shade?"
-        fill_in "Tell us more about it", with: "It's rad."
+        fill_in "When?", with: "2014-07-01"
         check "Mark as finished"
-        click_button "Save"
+        find_by_id('planting_overall_rating').set 4
+        fill_in "Finished date", with: "2014-08-30"
+        uncheck 'Mark as finished'
       end
 
-      expect(page).to have_css("img[alt='sun']")
-    end
+      # Javascript removes the finished at date when the
+      # planting is marked unfinished.
+      expect(find_by_id('planting_finished_at').value).to eq("")
 
-    it "should show a sunniness not specified image" do
-      fill_autocomplete "crop", with: "mai"
-      select_from_autocomplete "maize"
       within "form#new_planting" do
-        fill_in "When", with: "2015-10-15"
-        fill_in "How many?", with: 42
-        select "cutting", from: "Planted from:"
-        fill_in "Tell us more about it", with: "It's rad."
-        check "Mark as finished"
-        click_button "Save"
+        check 'Mark as finished'
       end
 
-      expect(page).to have_css("img[alt='not specified']")
+      # The finished at date was cached in Javascript in
+      # case the user clicks unfinished accidentally.
+      expect(find_by_id('planting_finished_at').value).to eq("2014-08-30")
+
+      within "form#new_planting" do
+        click_button "Save"
+      end
+      expect(page).to have_content "planting was successfully created"
+      expect(page).to have_content "Finished"
+      expect(page).to have_content "2014-08-30"
+      expect(page).to have_content "4 of 5"
+
+      # shouldn't be on the page
+      visit plantings_path
+      expect(page).to have_no_content "maize"
+
+      # show all plantings to see this finished planting
+      visit plantings_path(all: 1)
+      expect(page).to have_content "maize"
     end
-  end
 
-  describe "Marking a planting as finished from the show page" do
-    let(:path) { planting_path(planting) }
-    let(:link_text) { "Mark as finished" }
-    it_behaves_like "append date"
-  end
+    describe "Transplanting a planting" do
+      it "allows transplanting to another garden" do
+        other_garden = create(:garden, owner: member, name: 'Backyard')
+        visit planting_path(planting)
+        click_link 'Actions'
+        click_link 'Transplant'
+        within '#transplant-modal' do
+          select other_garden.name, from: 'Move this planting to:'
+          click_on "Transplant"
+        end
+        expect(page).to have_content "Planting was successfully transplanted"
 
-  describe "Marking a planting as finished from the list page" do
-    let(:path) { plantings_path }
-    let(:link_text) { "Mark as finished" }
+        new_planting = Planting.last
+        planting.reload
 
-    it_behaves_like "append date"
+        # The old planting is finished.
+        expect(planting.finished).to be true
+        expect(planting.finished_at).not_to be_nil
+
+        # The new planting is a continuation of the old one.
+        expect(new_planting.garden).to eq(other_garden)
+        expect(new_planting.crop).to eq(planting.crop)
+        expect(new_planting.owner).to eq(planting.owner)
+      end
+    end
+
+    describe "Marking a planting as finished without a date" do
+      before do
+        fill_autocomplete "crop", with: "mai"
+        select_from_autocomplete "maize"
+        within "form#new_planting" do
+          choose member.gardens.first.name
+          check "Mark as finished"
+          click_button "Save"
+        end
+      end
+
+      it { expect(page).to have_content "planting was successfully created" }
+      it { expect(page).to have_content "Finished" }
+    end
+
+    describe "Planting sunniness" do
+      before "shows the a sunny image" do
+        fill_autocomplete "crop", with: "mai"
+        select_from_autocomplete "maize"
+        within "form#new_planting" do
+          fill_in "When", with: "2015-10-15"
+          fill_in "How many?", with: 42
+          select "cutting", from: "Planted from"
+          select "sun", from: "Sun or shade?"
+          fill_in "Tell us more about it", with: "It's rad."
+          check "Mark as finished"
+          click_button "Save"
+        end
+      end
+
+      xit { expect(page).to have_css("img[alt='sun']") }
+    end
+
+    describe "Marking a planting as finished from the show page" do
+      # The actions menu opens the mark-finished dialog, which asks when it
+      # finished rather than popping a datepicker over the page.
+      before do
+        visit planting_path(planting)
+        click_link 'Actions'
+        click_link 'Mark as finished'
+      end
+
+      it "finishes it today" do
+        within '[role=dialog]' do
+          find('.pill-choice', text: 'Today').click
+          click_button 'Mark as finished'
+        end
+
+        expect(page).to have_content 'Finished'
+        expect(planting.reload.finished_at).to eq Time.zone.today
+      end
+
+      it "finishes it on a date you choose" do
+        within '[role=dialog]' do
+          find('.pill-choice', text: 'Enter date').click
+          fill_in 'Date', with: Time.zone.today
+          click_button 'Mark as finished'
+        end
+
+        expect(page).to have_content 'Finished'
+      end
+    end
   end
 end

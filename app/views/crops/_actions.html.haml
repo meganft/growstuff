@@ -1,0 +1,6 @@
+-# Just the one action here: planting this crop is what a crop page is for.
+-# Recording a harvest, saving seeds, posting and marking a planting failed all
+-# belong to a planting you already have, and live on its own page.
+- if crop.approved? && signed_in?
+  .crop-actions
+    = render 'plantings/modal', planting: Planting.new(crop: crop, owner: current_member)

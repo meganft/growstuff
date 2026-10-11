@@ -1,0 +1,4 @@
+%h2= t('.recently_harvested')
+.index-cards.justify-content-center
+  - Harvest.homepage_records(6).each do |harvest|
+    = render 'harvests/card', harvest: harvest

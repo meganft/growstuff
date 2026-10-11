@@ -1,0 +1,27 @@
+-# Choosing which garden to plant a crop in. Every row is the same shape: a
+-# square thumbnail, the garden's name, and its note if it has one — so the
+-# names line up instead of shifting with each photo's proportions.
+#modelPlantingForm.modal.fade{ "aria-hidden" => "true", "aria-labelledby" => "planting-modal-title", role: "dialog", tabindex: "-1" }
+  .modal-dialog{ role: "document" }
+    .modal-content
+      .modal-header
+        %h4#planting-modal-title.modal-title Add #{planting.crop.name} to your garden
+        %button.btn-close{ "aria-label" => "Close", "data-bs-dismiss" => "modal", type: "button" }
+      .modal-body
+        %p Which garden is it going in?
+        .list-group.garden-picker
+          - planting.owner.gardens.active.order_by_name.each do |garden|
+            = link_to plantings_path(planting: { crop_id: planting.crop_id, garden_id: garden.id }),
+                      method: :post,
+                      class: 'list-group-item list-group-item-action garden-picker-option' do
+              = image_tag garden_image_path(garden), class: 'garden-picker-photo', alt: ''
+              %span.garden-picker-text
+                %strong.garden-picker-name= garden.name
+                - if garden.description.present?
+                  %span.garden-picker-note= truncate(garden.description, length: 70, separator: ' ')
+      .modal-footer.justify-content-start
+        = link_to 'Add a new garden', new_garden_path, class: 'btn btn-secondary btn-sm'
+
+%a.btn{ "data-bs-target" => "#modelPlantingForm", "data-bs-toggle" => "modal", href: "", id: 'planting-button' }
+  = planting_icon
+  Add to my garden
